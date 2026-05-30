@@ -14,9 +14,10 @@ app.get('/api/test-scrape', async (req, res) => {
   let browser;
   try {
     console.log("Launching headless browser...");
-    // Render requires no-sandbox flags
+    // Render requires no-sandbox flags and explicit executable path
     browser = await puppeteer.launch({
       headless: 'new',
+      executablePath: '/usr/bin/google-chrome',
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
     
