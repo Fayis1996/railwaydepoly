@@ -152,29 +152,52 @@ app.get('/api/chart', async (req, res) => {
 
   let browser;
   try {
+    const PROXY_HOST = process.env.PROXY_HOST || 'brd.superproxy.io';
+    const PROXY_PORT = process.env.PROXY_PORT || '33335';
+    const PROXY_USERNAME = process.env.PROXY_USERNAME || 'brd-customer-hl_7697c697-zone-residential_proxy1';
+    const PROXY_PASSWORD = process.env.PROXY_PASSWORD || '12jekm7cm99f';
+
+    const useProxy = !!PROXY_HOST && !!PROXY_USERNAME;
+
     console.log(`Starting extraction for train: ${trainNo}, station: ${boardingStation} -> ${destinationStation}, class: ${classType}`);
+    const launchArgs = [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-accelerated-2d-canvas',
+      '--disable-gpu',
+      '--no-first-run',
+      '--no-zygote',
+      '--single-process',
+      '--disable-extensions',
+      '--disable-http2',
+      '--window-size=1280,800',
+      '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    ];
+
+    if (useProxy) {
+      console.log(`Routing through proxy: ${PROXY_HOST}:${PROXY_PORT}`);
+      launchArgs.push(`--proxy-server=http://${PROXY_HOST}:${PROXY_PORT}`);
+      launchArgs.push('--ignore-certificate-errors');
+    }
+
     const launchOptions = {
       headless: true,
       slowMo: 0,
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable',
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--disable-gpu',
-        '--no-first-run',
-        '--no-zygote',
-        '--single-process',
-        '--disable-extensions',
-        '--disable-http2',
-        '--window-size=1280,800',
-        '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      ]
+      args: launchArgs
     };
 
     browser = await puppeteer.launch(launchOptions);
     const page = await browser.newPage();
+
+    if (useProxy) {
+      console.log("Authenticating proxy session...");
+      await page.authenticate({
+        username: PROXY_USERNAME,
+        password: PROXY_PASSWORD
+      });
+    }
     
     // Set a realistic viewport
     await page.setViewport({ width: 1280, height: 800 });
@@ -236,11 +259,11 @@ app.get('/api/chart', async (req, res) => {
     });
 
     console.log("Navigating to portal...");
-    await page.goto('https://www.irctc.co.in/online-charts/', { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.goto('https://www.irctc.co.in/online-charts/', { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-    
     console.log("Automating UI...");
-    // 1. Find all text inputs (Train Name, Date, Boarding Station)
+    // Wait for the input field to be present
+    await page.waitForSelector('input[type="text"]', { timeout: 20000 });
     const inputs = await page.$$('input[type="text"]');
     if (inputs.length > 0) {
       // Click the first input (Train Number)
