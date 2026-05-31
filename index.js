@@ -154,14 +154,22 @@ app.get('/api/chart', async (req, res) => {
   try {
     console.log(`Starting extraction for train: ${trainNo}, station: ${boardingStation} -> ${destinationStation}, class: ${classType}`);
     const launchOptions = {
-      headless: false,
-      slowMo: 50,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      headless: true,
+      slowMo: 0,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--disable-gpu',
+        '--no-first-run',
+        '--no-zygote',
+        '--single-process',
+        '--disable-extensions',
+        '--window-size=1280,800'
+      ]
     };
-    
-    if (process.env.RENDER) {
-      launchOptions.executablePath = '/usr/bin/google-chrome';
-    }
 
     browser = await puppeteer.launch(launchOptions);
     const page = await browser.newPage();
