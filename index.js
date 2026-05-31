@@ -32,62 +32,57 @@ app.get('/api/route', async (req, res) => {
   }
 
   try {
-    const routesDb = JSON.parse(fs.readFileSync('./routes.json', 'utf8'));
+    let routesDb = {};
+    try { routesDb = JSON.parse(fs.readFileSync('./routes.json', 'utf8')); } catch(e) {}
+    
     if (routesDb[trainNo]) {
       const trainData = {
         number: trainNo,
-        name: `Train ${trainNo}`,
-        route: routesDb[trainNo]
+        name: routesDb[trainNo].name || `Train ${trainNo}`,
+        route: routesDb[trainNo].route || routesDb[trainNo]
       };
       routeCache[cacheKey] = trainData;
       return res.json({ success: true, data: trainData });
     }
     
-    // Fallback if not found in routes.json
-    console.log(`Fetching real train route for train ${trainNo} from erail.in API...`);
-    
-    // erail.in provides a reliable JSON API for train schedules
-    const erailRes = await fetch(`https://erail.in/data.aspx?Action=GetTrainTimeTable&TrainNo=${trainNo}&DataSource=0&Language=0&Cache=true`, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'text/plain, */*',
-        'Referer': 'https://erail.in/'
-      }
-    });
-    const rawText = await erailRes.text();
-    const routeData = [];
-    let seq = 1;
-    
-    // erail returns pipe-delimited rows: each station row has station code at index 1
-    if (rawText && rawText.includes('~')) {
-      const lines = rawText.split('\n');
-      for (const line of lines) {
-        const parts = line.split('~');
-        if (parts.length >= 4) {
-          const stationCode = (parts[1] || '').trim().toUpperCase();
-          const stationName = (parts[2] || '').trim();
-          if (stationCode && stationCode.length >= 2 && stationCode.length <= 7 && stationName) {
-            if (!routeData.find(d => d.code === stationCode)) {
-              routeData.push({ sequence: seq++, code: stationCode, name: stationName });
+    let routeData = [];
+    let trainName = `Train ${trainNo}`;
+
+    // --- Source 1: Try erail.in (reliable, no JS needed) ---
+    try {
+      console.log(`Trying erail.in for train ${trainNo}...`);
+      const erailRes = await fetch(`https://erail.in/rail/getTrains.aspx?TrainNo=${trainNo}&DataSource=0&Language=0&Cache=true`, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+      });
+      const erailText = await erailRes.text();
+      // erail returns pipe-separated data: trainNo|trainName|...|stations
+      if (erailText && erailText.includes('|')) {
+        const lines = erailText.split('~');
+        for (const line of lines) {
+          const parts = line.split('^');
+          if (parts.length > 2) {
+            const stationCode = parts[1]?.trim();
+            const stationName = parts[2]?.trim();
+            if (stationCode && stationName && stationCode.length >= 2 && stationCode === stationCode.toUpperCase()) {
+              if (!routeData.find(d => d.code === stationCode)) {
+                routeData.push({ sequence: routeData.length + 1, code: stationCode, name: stationName });
+              }
             }
           }
         }
       }
-    }
+    } catch(e) { console.log('erail failed:', e.message); }
 
-    // Second fallback: try confirmtkt
+    // --- Source 2: Try ConfirmTkt (if erail failed) ---
     if (routeData.length === 0) {
-      console.log(`erail fallback empty, trying confirmtkt for ${trainNo}...`);
       try {
+        console.log(`Trying ConfirmTkt for train ${trainNo}...`);
         const routeRes = await fetch(`https://www.confirmtkt.com/train-schedule/${trainNo}`, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          }
+          headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
         });
         const html = await routeRes.text();
         const $ = cheerio.load(html);
-        
+        let seq = 1;
         $('a[href^="/station/"]').each((i, el) => {
           const text = $(el).text().trim();
           if (text.includes('-')) {
@@ -103,28 +98,48 @@ app.get('/api/route', async (req, res) => {
             }
           }
         });
-      } catch(e) {
-        console.log('ConfirmTkt also failed:', e.message);
-      }
+      } catch(e) { console.log('ConfirmTkt failed:', e.message); }
+    }
+
+    // --- Source 3: Try RailYatri API (if both above failed) ---
+    if (routeData.length === 0) {
+      try {
+        console.log(`Trying RailYatri API for train ${trainNo}...`);
+        const ryRes = await fetch(`https://www.railyatri.in/api/pnr_status/train_schedule/?train_number=${trainNo}`, {
+          headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }
+        });
+        const ryJson = await ryRes.json();
+        if (ryJson && ryJson.data && Array.isArray(ryJson.data)) {
+          trainName = ryJson.train_name || trainName;
+          ryJson.data.forEach((st, idx) => {
+            const code = st.station_code || st.stn_code;
+            const name = st.station_name || st.stn_name;
+            if (code && name) {
+              routeData.push({ sequence: idx + 1, code: code.toUpperCase(), name });
+            }
+          });
+        }
+      } catch(e) { console.log('RailYatri failed:', e.message); }
     }
 
     if (routeData.length === 0) {
-      return res.status(404).json({ success: false, error: 'Train route not found.' });
+      return res.status(404).json({ success: false, error: `Train route for ${trainNo} not found. Please add it to routes.json.` });
     }
     
-    // Store in cache and routes.json for future
-    const trainData = {
-      number: trainNo,
-      name: `Train ${trainNo}`,
-      route: routeData
-    };
-    
+    // Save to routes.json for next time (persistent cache)
+    try {
+      routesDb[trainNo] = { name: trainName, route: routeData };
+      fs.writeFileSync('./routes.json', JSON.stringify(routesDb, null, 2));
+      console.log(`Saved route for train ${trainNo} to routes.json`);
+    } catch(e) { console.log('Could not save to routes.json:', e.message); }
+
+    const trainData = { number: trainNo, name: trainName, route: routeData };
     routeCache[cacheKey] = trainData;
-    
     res.json({ success: true, data: trainData });
+
   } catch (error) {
     console.error("Route Fetch Error:", error);
-    res.status(500).json({ success: false, error: 'Failed to generate train route via AI.' });
+    res.status(500).json({ success: false, error: 'Failed to generate train route.' });
   }
 });
 
