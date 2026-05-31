@@ -1,0 +1,18 @@
+RESERVATION CHART
+Train No: 12617
+Journey Date: 31/05/2026
+Boarding Station: RATNAGIRI (RN)
+Charting Station: MADGAON (MAO)
+First Chart Creation: 30/05/2026 17:21 Hrs.
+Second Chart Current Vacant Berth Status at 31/05/2026 02:55 Hrs.
+SECOND AC (2A)
+THIRD AC (3A)
+AC 3 ECONOMY (3E)
+SLEEPER CLASS (SL)
+* TTE on train can book ticket till PANVEL (PNVL). Online booking is available from PANVEL (PNVL) onwards.
+
+Copyright © 2026 - www.irctc.co.in All Rights Reserved
+
+Designed and Hosted by CRIS
+
+SCHEDULE

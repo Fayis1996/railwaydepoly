@@ -1,0 +1,7 @@
+node_modules
+npm-debug.log
+.DS_Store
+irctc_debug.png
+irctc_innerText.txt
+irctc_dom.html
+routes.json
