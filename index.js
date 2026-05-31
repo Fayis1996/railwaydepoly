@@ -172,7 +172,8 @@ app.get('/api/chart', async (req, res) => {
       '--disable-extensions',
       '--disable-http2',
       '--window-size=1280,800',
-      '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      '--disable-blink-features=AutomationControlled'
     ];
 
     if (useProxy) {
@@ -182,7 +183,7 @@ app.get('/api/chart', async (req, res) => {
     }
 
     const launchOptions = {
-      headless: true,
+      headless: "new",
       slowMo: 0,
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/google-chrome-stable',
       args: launchArgs
@@ -258,12 +259,19 @@ app.get('/api/chart', async (req, res) => {
       }
     });
 
-    console.log("Navigating to portal...");
+    // Capture browser console logs for debugging
+    page.on('console', msg => console.log('PAGE LOG:', msg.text()));
+
+    console.log("Navigating to IRCTC...");
     await page.goto('https://www.irctc.co.in/online-charts/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+
+    console.log("Waiting for React to mount...");
+    // Wait until the root div has some content (React has mounted)
+    await page.waitForFunction(() => document.querySelector('#root') && document.querySelector('#root').children.length > 0, { timeout: 30000 }).catch(() => console.log("React mount timeout"));
 
     console.log("Automating UI...");
     // 1. Enter Train Number - wait for field and log all input info
-    await page.waitForSelector('input[type="text"]', { timeout: 20000 });
+    await page.waitForSelector('input[type="text"]', { timeout: 30000 });
     await new Promise(r => setTimeout(r, 1500));
 
     // Log all inputs for debugging
