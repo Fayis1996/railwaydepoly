@@ -431,22 +431,43 @@ app.get('/api/chart', async (req, res) => {
 });
 
 
-// --- THE ORIGINAL TEST ENDPOINT ---
 app.get('/api/test-scrape', async (req, res) => {
   let browser;
   try {
+    const PROXY_HOST = process.env.PROXY_HOST || 'brd.superproxy.io';
+    const PROXY_PORT = process.env.PROXY_PORT || '33335';
+    const PROXY_USERNAME = process.env.PROXY_USERNAME || 'brd-customer-hl_7697c697-zone-residential_proxy1';
+    const PROXY_PASSWORD = process.env.PROXY_PASSWORD || '12jekm7cm99f';
+
+    const useProxy = !!PROXY_HOST && !!PROXY_USERNAME;
+    const launchArgs = ['--no-sandbox', '--disable-setuid-sandbox'];
+
+    if (useProxy) {
+      launchArgs.push(`--proxy-server=http://${PROXY_HOST}:${PROXY_PORT}`);
+      launchArgs.push('--ignore-certificate-errors');
+    }
+
     const launchOptions = {
-      headless: 'new',
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      headless: true,
+      args: launchArgs
     };
     if (process.env.RENDER) launchOptions.executablePath = '/usr/bin/google-chrome';
 
     browser = await puppeteer.launch(launchOptions);
     const page = await browser.newPage();
-    await page.goto('https://www.irctc.co.in/online-charts/', { waitUntil: 'networkidle2' });
+
+    if (useProxy) {
+      await page.authenticate({
+        username: PROXY_USERNAME,
+        password: PROXY_PASSWORD
+      });
+    }
+
+    await page.goto('https://www.irctc.co.in/online-charts/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForSelector('body', { timeout: 15000 });
     const title = await page.title();
     await browser.close();
-    res.json({ success: true, message: "Successfully loaded IRCTC portal using stealth!", title });
+    res.json({ success: true, message: "Successfully loaded IRCTC portal using proxy!", title });
   } catch (error) {
     if (browser) await browser.close();
     res.status(500).json({ success: false, error: error.message });
