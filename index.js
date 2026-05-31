@@ -226,6 +226,27 @@ app.get('/api/chart', async (req, res) => {
       window.chrome = { runtime: {} };
     });
 
+    // Set up request interception to block trackers, images, and fonts to save proxy bandwidth
+    await page.setRequestInterception(true);
+    page.on('request', (request) => {
+      const resourceType = request.resourceType();
+      const url = request.url();
+      
+      if (
+        resourceType === 'image' ||
+        resourceType === 'stylesheet' ||
+        resourceType === 'font' ||
+        resourceType === 'media' ||
+        url.includes('google-analytics.com') ||
+        url.includes('go-mpulse.net') ||
+        url.includes('googletagmanager.com')
+      ) {
+        request.abort();
+      } else {
+        request.continue();
+      }
+    });
+
     // Set up a listener to intercept the JSON API response from IRCTC
     let interceptedData = null;
     let interceptedDetails = []; // To hold detailed berth data (vbd)
