@@ -390,17 +390,18 @@ app.get('/api/chart', async (req, res) => {
       }
     }
 
-      // DEBUG: Save a screenshot and DOM unconditionally
-      await page.screenshot({ path: 'irctc_debug.png', fullPage: true });
-      try {
-        const domText = await page.evaluate(() => document.body.innerText);
-        const domHtml = await page.evaluate(() => document.body.innerHTML);
-        fs.writeFileSync('irctc_innerText.txt', domText);
-        fs.writeFileSync('irctc_dom.html', domHtml);
-        console.log("Saved irctc_dom.html unconditionally");
-      } catch(e) {
-        console.log("Failed to save dom", e);
-      }
+    let debugHtml = "";
+    // DEBUG: Save a screenshot and DOM unconditionally
+    await page.screenshot({ path: 'irctc_debug.png', fullPage: true }).catch(() => {});
+    try {
+      const domText = await page.evaluate(() => document.body.innerText);
+      debugHtml = await page.evaluate(() => document.body.innerHTML);
+      fs.writeFileSync('irctc_innerText.txt', domText);
+      fs.writeFileSync('irctc_dom.html', debugHtml);
+      console.log("Saved irctc_dom.html unconditionally");
+    } catch(e) {
+      console.log("Failed to save dom", e);
+    }
 
     // 5. Deep-Scraping: Try to click the specific Class tab to trigger detailed vbd endpoints!
     if (interceptedData) {
@@ -467,7 +468,8 @@ app.get('/api/chart', async (req, res) => {
     } else {
       res.status(404).json({ 
         success: false, 
-        error: "Could not extract chart data. The IRCTC UI might have changed, or no chart is prepared for this train." 
+        error: "Could not extract chart data. The IRCTC UI might have changed, or no chart is prepared for this train.",
+        debugHtml: debugHtml 
       });
     }
 
