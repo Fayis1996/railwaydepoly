@@ -262,33 +262,73 @@ app.get('/api/chart', async (req, res) => {
     await page.goto('https://www.irctc.co.in/online-charts/', { waitUntil: 'domcontentloaded', timeout: 60000 });
 
     console.log("Automating UI...");
-    // 1. Enter Train Number
+    // 1. Enter Train Number - wait for field and log all input info
     await page.waitForSelector('input[type="text"]', { timeout: 20000 });
-    
-    // Focus and type Train Number into the first text input
+    await new Promise(r => setTimeout(r, 1500));
+
+    // Log all inputs for debugging
+    const inputCount = await page.evaluate(() => {
+      const inputs = document.querySelectorAll('input[type="text"]');
+      console.log('Input count:', inputs.length);
+      inputs.forEach((inp, i) => console.log(`Input[${i}]: placeholder="${inp.placeholder}" id="${inp.id}" name="${inp.name}" value="${inp.value}"`));
+      return inputs.length;
+    });
+    console.log(`Found ${inputCount} text inputs on page`);
+
+    // Focus first input (train number) and type
     await page.evaluate(() => {
       const inputs = document.querySelectorAll('input[type="text"]');
       if (inputs.length > 0) inputs[0].focus();
     });
-    await page.keyboard.type(trainNo, { delay: 100 });
-    
-    // Wait for dropdown and press Enter
-    await new Promise(r => setTimeout(r, 3000));
+    await page.keyboard.type(trainNo, { delay: 120 });
+
+    // Wait for autocomplete dropdown
+    await new Promise(r => setTimeout(r, 3500));
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('Enter');
-    await new Promise(r => setTimeout(r, 2000));
+    // Wait longer for page to re-render after train selection
+    await new Promise(r => setTimeout(r, 3000));
 
-    // 2. Enter Boarding Station
+    // 2. Enter Boarding Station - re-detect inputs after page re-render
     if (boardingStation) {
-      await page.evaluate(() => {
+      // Log updated inputs after train selection
+      const updatedInputCount = await page.evaluate(() => {
         const inputs = document.querySelectorAll('input[type="text"]');
-        if (inputs.length > 2) inputs[2].focus();
+        console.log('Updated input count after train selection:', inputs.length);
+        inputs.forEach((inp, i) => console.log(`Input[${i}]: placeholder="${inp.placeholder}" id="${inp.id}" name="${inp.name}" value="${inp.value}"`));
+        return inputs.length;
       });
-      await page.keyboard.type(boardingStation, { delay: 100 });
-      await new Promise(r => setTimeout(r, 3000));
-      await page.keyboard.press('ArrowDown');
-      await page.keyboard.press('Enter');
-      await new Promise(r => setTimeout(r, 1500));
+      console.log(`After train selection: ${updatedInputCount} text inputs`);
+
+      // Try to find boarding station input by placeholder text
+      const foundBoarding = await page.evaluate((station) => {
+        const inputs = Array.from(document.querySelectorAll('input[type="text"]'));
+        // Find input that appears to be for boarding station (not already filled with train name)
+        let target = inputs.find(inp => inp.placeholder && 
+          (inp.placeholder.toLowerCase().includes('boarding') || inp.placeholder.toLowerCase().includes('from') || inp.placeholder.toLowerCase().includes('station')));
+        // Fallback to index 2 if no placeholder match
+        if (!target && inputs.length > 2) target = inputs[2];
+        if (target) {
+          target.focus();
+          return true;
+        }
+        return false;
+      }, boardingStation);
+
+      if (foundBoarding) {
+        // Clear and type boarding station
+        await page.keyboard.down('Control');
+        await page.keyboard.press('A');
+        await page.keyboard.up('Control');
+        await page.keyboard.press('Backspace');
+        await page.keyboard.type(boardingStation, { delay: 120 });
+        await new Promise(r => setTimeout(r, 3500));
+        await page.keyboard.press('ArrowDown');
+        await page.keyboard.press('Enter');
+        await new Promise(r => setTimeout(r, 2000));
+      } else {
+        console.log('Could not find boarding station input!');
+      }
     }
 
     // 3. Click the "Get Train Chart" button
