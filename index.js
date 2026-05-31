@@ -278,12 +278,16 @@ app.get('/api/chart', async (req, res) => {
       await new Promise(r => setTimeout(r, 1500));
       
       // 2. Select Boarding Station
-      if (inputs.length > 2 && boardingStation) {
-        await inputs[2].click();
-        await page.keyboard.type(boardingStation, { delay: 100 });
-        await new Promise(r => setTimeout(r, 2500));
-        await page.keyboard.press('ArrowDown');
-        await page.keyboard.press('Enter');
+      if (boardingStation) {
+        // Re-query the inputs to avoid "Node is detached from document" errors
+        const activeInputs = await page.$$('input[type="text"]');
+        if (activeInputs.length > 2) {
+          await activeInputs[2].click();
+          await page.keyboard.type(boardingStation, { delay: 100 });
+          await new Promise(r => setTimeout(r, 2500));
+          await page.keyboard.press('ArrowDown');
+          await page.keyboard.press('Enter');
+        }
       }
 
       await new Promise(r => setTimeout(r, 1000));
