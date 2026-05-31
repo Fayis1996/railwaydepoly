@@ -262,89 +262,93 @@ app.get('/api/chart', async (req, res) => {
     await page.goto('https://www.irctc.co.in/online-charts/', { waitUntil: 'domcontentloaded', timeout: 60000 });
 
     console.log("Automating UI...");
-    // Wait for the input field to be present
+    // 1. Enter Train Number
     await page.waitForSelector('input[type="text"]', { timeout: 20000 });
-    const inputs = await page.$$('input[type="text"]');
-    if (inputs.length > 0) {
-      // Click the first input (Train Number)
-      await inputs[0].click();
-      await page.keyboard.type(trainNo, { delay: 100 });
-      
-      // Wait for the dropdown options to appear (API call) and press Enter
-      await new Promise(r => setTimeout(r, 2500));
+    
+    // Focus and type Train Number into the first text input
+    await page.evaluate(() => {
+      const inputs = document.querySelectorAll('input[type="text"]');
+      if (inputs.length > 0) inputs[0].focus();
+    });
+    await page.keyboard.type(trainNo, { delay: 100 });
+    
+    // Wait for dropdown and press Enter
+    await new Promise(r => setTimeout(r, 3000));
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Enter');
+    await new Promise(r => setTimeout(r, 2000));
+
+    // 2. Enter Boarding Station
+    if (boardingStation) {
+      await page.evaluate(() => {
+        const inputs = document.querySelectorAll('input[type="text"]');
+        if (inputs.length > 2) inputs[2].focus();
+      });
+      await page.keyboard.type(boardingStation, { delay: 100 });
+      await new Promise(r => setTimeout(r, 3000));
       await page.keyboard.press('ArrowDown');
       await page.keyboard.press('Enter');
-      
       await new Promise(r => setTimeout(r, 1500));
+    }
+
+    // 3. Click the "Get Train Chart" button
+    await page.evaluate(() => {
+      const buttons = Array.from(document.querySelectorAll('button'));
+      const submitBtn = buttons.find(b => b.textContent.includes('Get Train Chart') || b.textContent.includes('Chart'));
+      if (submitBtn) submitBtn.click();
+    });
+
+    console.log("Waiting for summary page to load...");
+    await page.waitForFunction(
+      () => document.body.innerText.includes('Vacant Berth') || document.body.innerText.includes('Chart Not Prepared') || document.body.innerText.includes('No Vacant'),
+      { timeout: 15000 }
+    ).catch(() => console.log("Timeout waiting for UI update..."));
+    
+    // 4. Select Destination Station on the summary page
+    if (destinationStation) {
+      console.log(`Setting Destination Station to ${destinationStation} on summary page...`);
+      await new Promise(r => setTimeout(r, 2000));
       
-      // 2. Select Boarding Station
-      if (boardingStation) {
-        // Re-query the inputs to avoid "Node is detached from document" errors
-        const activeInputs = await page.$$('input[type="text"]');
-        if (activeInputs.length > 2) {
-          await activeInputs[2].click();
-          await page.keyboard.type(boardingStation, { delay: 100 });
+      try {
+        // Find input dynamically
+        const placeholderSelector = 'input[placeholder*="Journey To"], input[placeholder*="Destination"]';
+        const hasPlaceholderInput = await page.$(placeholderSelector);
+        
+        if (hasPlaceholderInput) {
+          await page.focus(placeholderSelector);
+          await page.keyboard.down('Control');
+          await page.keyboard.press('A');
+          await page.keyboard.up('Control');
+          await page.keyboard.press('Backspace');
+          
+          await page.keyboard.type(destinationStation, { delay: 100 });
           await new Promise(r => setTimeout(r, 2500));
           await page.keyboard.press('ArrowDown');
           await page.keyboard.press('Enter');
+          await new Promise(r => setTimeout(r, 3000));
+        } else {
+          // Fallback using direct query selector evaluation
+          await page.evaluate(() => {
+            const allInputs = document.querySelectorAll('input');
+            if (allInputs.length >= 4) {
+              allInputs[3].focus();
+            }
+          });
+          await page.keyboard.down('Control');
+          await page.keyboard.press('A');
+          await page.keyboard.up('Control');
+          await page.keyboard.press('Backspace');
+          
+          await page.keyboard.type(destinationStation, { delay: 100 });
+          await new Promise(r => setTimeout(r, 2500));
+          await page.keyboard.press('ArrowDown');
+          await page.keyboard.press('Enter');
+          await new Promise(r => setTimeout(r, 3000));
         }
+      } catch (e) {
+        console.log("Could not set destination station: ", e);
       }
-
-      await new Promise(r => setTimeout(r, 1000));
-
-      // 3. Click the "Get Train Chart" button
-      await page.evaluate(() => {
-        const buttons = Array.from(document.querySelectorAll('button'));
-        const submitBtn = buttons.find(b => b.textContent.includes('Get Train Chart') || b.textContent.includes('Chart'));
-        if (submitBtn) submitBtn.click();
-      });
     }
-
-    console.log("Waiting for summary page to load...");
-      await page.waitForFunction(
-        () => document.body.innerText.includes('Vacant Berth') || document.body.innerText.includes('Chart Not Prepared') || document.body.innerText.includes('No Vacant'),
-        { timeout: 15000 }
-      ).catch(() => console.log("Timeout waiting for UI update..."));
-      
-      // 4. Select Destination Station on the summary page
-      if (destinationStation) {
-        console.log(`Setting Destination Station to ${destinationStation} on summary page...`);
-        // Better way: use Puppeteer to type into the Journey To box
-        // The placeholder is usually "Journey To"
-        try {
-          const destInput = await page.$('input[placeholder*="Journey To"], input[placeholder*="Destination"]');
-          if (destInput) {
-            await destInput.click();
-            // Clear existing
-            await page.keyboard.down('Control');
-            await page.keyboard.press('A');
-            await page.keyboard.up('Control');
-            await page.keyboard.press('Backspace');
-            
-            await page.keyboard.type(destinationStation, { delay: 100 });
-            await new Promise(r => setTimeout(r, 2000));
-            await page.keyboard.press('ArrowDown');
-            await page.keyboard.press('Enter');
-            console.log("Selected Destination, waiting for UI to update...");
-            await new Promise(r => setTimeout(r, 3000)); // wait for network reload
-          } else {
-             // Fallback: Just try to click the 4th input
-             const allInputs = await page.$$('input');
-             if (allInputs.length >= 4) {
-               await allInputs[3].click();
-               await page.keyboard.down('Control'); await page.keyboard.press('A'); await page.keyboard.up('Control'); await page.keyboard.press('Backspace');
-               await page.keyboard.type(destinationStation, { delay: 100 });
-               await new Promise(r => setTimeout(r, 2000));
-               await page.keyboard.press('ArrowDown');
-               await page.keyboard.press('Enter');
-               console.log("Selected Destination (fallback), waiting for UI to update...");
-               await new Promise(r => setTimeout(r, 3000));
-             }
-          }
-        } catch (e) {
-          console.log("Could not set destination station: ", e);
-        }
-      }
 
       // DEBUG: Save a screenshot and DOM unconditionally
       await page.screenshot({ path: 'irctc_debug.png', fullPage: true });
